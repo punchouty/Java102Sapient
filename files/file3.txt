@@ -1,0 +1,1912 @@
+TUTORIAL
+React.js and Spring Data REST
+
+This tutorial shows a collection of apps that use Spring Data REST and its powerful backend functionality combined with React’s sophisticated features to build an easy-to-grok UI.
+
+Spring Data REST provides a fast way to build hypermedia-powered repositories.
+React is Facebook’s solution to efficient, fast, and easy-to-use views in the land of JavaScript.
+Part 1 - Basic Features
+
+Welcome Spring community,
+
+In this section, you will see how to get a bare-bones Spring Data REST application up and running quickly. Then you will build a simple UI on top of it using Facebook’s React.js toolset.
+
+Step 0 - Setting up your environment
+
+Feel free to grab the code from this repository and follow along.
+
+If you want to do it yourself, visit http://start.spring.io and pick these items:
+
+Rest Repositories
+Thymeleaf
+JPA
+H2
+Lombok (May want to ensure your IDE has support for this as well.)
+This demo uses Java 8, Maven Project, and the latest stable release of Spring Boot. It also uses React.js coded in ES6. This will give you a clean, empty project. From there, you can add the various files shown explicitly in this section, and/or borrow from the repository listed above.
+
+In the beginning…​
+
+In the beginning there was data. And it was good. But then people wanted to access the data through various means. Over the years, people cobbled together lots of MVC controllers, many using Spring’s powerful REST support. But doing over and over cost a lot of time.
+
+Spring Data REST addresses how simple this problem can be if some assumptions are made:
+
+The developer uses a Spring Data project that supports the repository model.
+The system uses well accepted, industry standard protocols, like HTTP verbs, standardized media types, and IANA-approved link names.
+Declaring your domain
+
+The cornerstone of any Spring Data REST-based application are the domain objects. For this section, you will build an application to track the employees for a company. Kick that off by creating a data type like this:
+
+src/main/java/com/greglturnquist/payroll/Employee.java
+@Data
+@Entity
+public class Employee {
+
+	private @Id @GeneratedValue Long id;
+	private String firstName;
+	private String lastName;
+	private String description;
+
+	private Employee() {}
+
+	public Employee(String firstName, String lastName, String description) {
+		this.firstName = firstName;
+		this.lastName = lastName;
+		this.description = description;
+	}
+}
+@Entity is a JPA annotation that denotes the whole class for storage in a relational table.
+@Id and @GeneratedValue are JPA annotations to note the primary key and that is generated automatically when needed.
+@Data and @RequiredArgsConstructor are Project Lombok annotations to autogenerate getters, setters, constructors, toString, hash, equals, and other things. It cuts down on the boilerplate.
+This entity is used to track employee information. In this case, their name and job description.
+
+ Spring Data REST isn’t confined to JPA. It supports many NoSQL data stores, but you won’t be covering those here.
+Defining the repository
+
+Another key piece of a Spring Data REST application is to create a corresponding repository definition.
+
+src/main/java/com/greglturnquist/payroll/EmployeeRepository.java
+public interface EmployeeRepository extends CrudRepository<Employee, Long> {
+
+}
+The repository extends Spring Data Commons' CrudRepository and plugs in the type of the domain object and its primary key
+That is all that is needed! In fact, you don’t even have to annotate this if it’s top-level and visible. If you use your IDE and open up CrudRepository, you’ll find a fist full of pre-built methods already defined.
+
+ You can define your own repository if you wish. Spring Data REST supports that as well.
+Pre-loading the demo
+
+To work with this application, you need to pre-load it with some data like this:
+
+src/main/java/com/greglturnquist/payroll/DatabaseLoader.java
+@Component
+public class DatabaseLoader implements CommandLineRunner {
+
+	private final EmployeeRepository repository;
+
+	@Autowired
+	public DatabaseLoader(EmployeeRepository repository) {
+		this.repository = repository;
+	}
+
+	@Override
+	public void run(String... strings) throws Exception {
+		this.repository.save(new Employee("Frodo", "Baggins", "ring bearer"));
+	}
+}
+This class is marked with Spring’s @Component annotation so that it is automatically picked up by @SpringBootApplication.
+It implements Spring Boot’s CommandLineRunner so that it gets run after all the beans are created and registered.
+It uses constructor injection and autowiring to get Spring Data’s automatically created EmployeeRepository.
+The run() method is invoked with command line arguments, loading up your data.
+One of the biggest, most powerful features of Spring Data is its ability to write JPA queries for you. This not only cuts down on your development time, but also reduces the risk of bugs and errors. Spring Data looks at the name of methods in a repository class and figures out the operation you need including saving, deleting, and finding.
+
+That is how we can write an empty interface and inherit already built save, find, and delete operations.
+
+Adjusting the root URI
+
+By default, Spring Data REST hosts a root collection of links at /. Because you will host a web UI on the same path, you need to change the root URI.
+
+src/main/resources/application.properties
+spring.data.rest.base-path=/api
+Launching the backend
+
+The last step needed to get a fully operational REST API off the ground is to write a public static void main using Spring Boot:
+
+src/main/java/com/greglturnquist/payroll/ReactAndSpringDataRestApplication.java
+@SpringBootApplication
+public class ReactAndSpringDataRestApplication {
+
+	public static void main(String[] args) {
+		SpringApplication.run(ReactAndSpringDataRestApplication.class, args);
+	}
+}
+Assuming the previous class as well as your Maven build file were generated from http://start.spring.io, you can now launch it either by running that main() method inside your IDE, or type ./mvnw spring-boot:run on the command line. (mvnw.bat for Windows users).
+
+ If you aren’t up-to-date on Spring Boot and how it works, you should consider watch one of Josh Long’s introductory presentations. Did it? Press on!
+Touring your REST service
+
+With the app running, you can check things out on the command line using cURL (or any other tool you like).
+
+$ curl localhost:8080/api
+{
+  "_links" : {
+    "employees" : {
+      "href" : "http://localhost:8080/api/employees"
+    },
+    "profile" : {
+      "href" : "http://localhost:8080/api/profile"
+    }
+  }
+}
+When you ping the root node, you get back a collection of links wrapped up in a HAL-formatted JSON document.
+
+_links is a the collection of links available.
+employees points to an aggregate root for the employee objects defined by the EmployeeRepository interface.
+profile is an IANA-standard relation and points to discoverable metadata about the entire service. We’ll explore this in a later section.
+You can further dig into this service by navigating the employees link.
+
+$ curl localhost:8080/api/employees
+{
+  "_embedded" : {
+    "employees" : [ {
+      "firstName" : "Frodo",
+      "lastName" : "Baggins",
+      "description" : "ring bearer",
+      "_links" : {
+        "self" : {
+          "href" : "http://localhost:8080/api/employees/1"
+        }
+      }
+    } ]
+  }
+}
+At this stage, you are viewing the entire collection of employees.
+
+What’s included along with the data you pre-loaded earlier is a _links attribute with a self link. This is the canonical link for that particular employee. What is canonical? It means free of context. For example, the same user could be fetched through a link like /api/orders/1/processor, in which the employee is assocated with processing a particular order. Here, there is no relationship to other entities.
+
+ Links are a critical facet of REST. They provide the power to navigate to related items. It makes it possible for other parties to navigate around your API without having to rewrite things everytime there is a change. Updates in the client is a common problem when the clients hard code paths to resources. Restructuring resources can cause big upheavals in code. If links are used and instead the navigation route is maintained, then it becomes easy and flexible to make such adjustments.
+You can decide to view that one employee if you wish.
+
+$ curl localhost:8080/api/employees/1
+{
+  "firstName" : "Frodo",
+  "lastName" : "Baggins",
+  "description" : "ring bearer",
+  "_links" : {
+    "self" : {
+      "href" : "http://localhost:8080/api/employees/1"
+    }
+  }
+}
+Little change here, except that there is no need for the _embedded wrapper since there is only domain object.
+
+That’s all and good, but you are probably itching to create some new entries.
+
+$ curl -X POST localhost:8080/api/employees -d '{"firstName": "Bilbo", "lastName": "Baggins", "description": "burglar"}' -H 'Content-Type:application/json'
+{
+  "firstName" : "Bilbo",
+  "lastName" : "Baggins",
+  "description" : "burglar",
+  "_links" : {
+    "self" : {
+      "href" : "http://localhost:8080/api/employees/2"
+    }
+  }
+}
+You can also PUT, PATCH, and DELETE as shown in this related guide. But let’s not dig into that. You have already spent way too much time interacting with this REST service manually. Don’t you want to build a slick UI instead?
+
+Setting up a custom UI controller
+
+Spring Boot makes it super simple to stand up a custom web page. First, you need a Spring MVC controller.
+
+src/main/java/com/greglturnquist/payroll/HomeController.java
+@Controller
+public class HomeController {
+
+	@RequestMapping(value = "/")
+	public String index() {
+		return "index";
+	}
+
+}
+@Controller marks this class as a Spring MVC controller.
+@RequestMapping flags the index() method to support the / route.
+It returns index as the name of the template, which Spring Boot’s autoconfigured view resolver will map to src/main/resources/templates/index.html.
+Defining an HTML template
+
+You are using Thymeleaf, although you won’t really use many of its features.
+
+src/main/resources/templates/index.html
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head lang="en">
+    <meta charset="UTF-8"/>
+    <title>ReactJS + Spring Data REST</title>
+    <link rel="stylesheet" href="/main.css" />
+</head>
+<body>
+
+    <div id="react"></div>
+
+    <script src="built/bundle.js"></script>
+
+</body>
+</html>
+The key part in this template is the <div id="react"></div> component in the middle. It is where you will direct React to plug in the rendered output.
+
+Loading JavaScript modules
+
+This tutorial won’t go into extensive detail on how it uses webpack to load JavaScript modules. But thanks to the frontend-maven-plugin, you don’t have to install any of the node.js tools to build and run the code.
+
+The following JavaScript modules will be used:
+
+webpack
+babel
+react.js
+rest.js
+With the power of babel, the JavaScript is written in ES6.
+
+If you’re interested, the paths for the JavaScript moodules are defined in webpack.config.js. This is then used by webpack to generate a JavaScript bundle, which is loaded inside the template.
+
+ Want to see your JavaScript changes automatically? Move into the src/main/resource/static, and run npm run-script watch to put webpack into watch mode. It will regenerate bundle.js as you edit the source. Assuming you’ve setup your IDE properly, spring-boot-devtools combined with this should speed up changes.
+With all that in place, you can focus on the React bits which are fetched after the DOM is loaded. It’s broken down into parts as below:
+
+Since you are using webpack to assemble things, go ahead and fetch the modules you need:
+
+src/main/resources/static/app.js
+const React = require('react');
+const client = require('./client');
+React is the main library from Facebook for building this app.
+client is custom code that configures rest.js to include support for HAL, URI Templates, and other things. It also sets the default Accept request header to application/hal+json. You can read the code here.
+Diving into React
+
+React is based on defining components. Oftentimes, one component can hold multiple instances of another in a parent-child relationship. It’s easy for this concept to extend several layers.
+
+To start things off, it’s very handy to have a top level container for all components. (This will become more evident as you expand upon the code throughout this series.) Right now, you only have the employee list. But you might need some other related components later on, so let’s start with this:
+
+src/main/resources/static/app.js - App component
+class App extends React.Component {
+
+	constructor(props) {
+		super(props);
+		this.state = {employees: []};
+	}
+
+	componentDidMount() {
+		client({method: 'GET', path: '/api/employees'}).done(response => {
+			this.setState({employees: response.entity._embedded.employees});
+		});
+	}
+
+	render() {
+		return (
+			<EmployeeList employees={this.state.employees}/>
+		)
+	}
+}
+class Foo extends React.Component{…​} is the method to create a React component.
+componentDidMount is the API invoked after React renders a component in the DOM.
+render is the API to "draw" the component on the screen.
+ In React, uppercase is the convention for naming components.
+In the App component, an array of employees is fetched from the Spring Data REST backend and stored in this component’s state data.
+
+React components have two types of data: state and properties.
+
+State is data that the component is expected to handle itself. It is also data that can fluctuate and change. To read the state, you use this.state. To update it, you use this.setState(). Every time this.setState() is called, React updates the state, calculates a diff between the previous state and the new state, and injects a set of changes to the DOM on the page. This results a fast and efficient updates to your UI.
+
+The common convention is to initialize state with all your attributes empty in the constructor. Then you lookup data from the server using componentDidMount and populate your attributes. From there on, updates can be driven by user action or other events.
+
+Properties encompass data that is passed into the component. Properties do NOT change but are instead fixed values. To set them, you assign them to attributes when creating a new component and you’ll soon see.
+
+ JavaScript doesn’t lock down data structures like other languages. You can try to subvert properties by assigning values, but this doesn’t work with React’s differential engine and should be avoided.
+In this code, the function loads data via client, a Promise compliant instance of rest.js. When it is done retrieving from /api/employees, it then invokes the function inside done() and set’s the state based on it’s HAL document (response.entity._embedded.employees). You might remember the structure of curl /api/employees earlier and see how it maps onto this structure.
+
+When the state is updated, the render() function is invoked by the framework. The employee state data is included in creation of the <EmployeeList /> React component as an input parameter.
+
+Below is the definition for an EmployeeList.
+
+src/main/resources/static/app.js - EmployeeList component
+class EmployeeList extends React.Component{
+	render() {
+		var employees = this.props.employees.map(employee =>
+			<Employee key={employee._links.self.href} employee={employee}/>
+		);
+		return (
+			<table>
+				<tr>
+					<th>First Name</th>
+					<th>Last Name</th>
+					<th>Description</th>
+				</tr>
+				{employees}
+			</table>
+		)
+	}
+}
+Using JavaScript’s map function, this.props.employees is transformed from an array of employee records into an array of <Element /> React components (which you’ll see a little further down).
+
+<Employee key={employee._links.self.href} data={employee} />
+This shows a new React component (note the uppercase format) being created along with two properties: key and data. These are supplied the values from employee._links.self.href and employee.
+
+ Whenever you work with Spring Data REST, the self link IS the key for a given resource. React needs a unique identifer for child nodes, and _links.self.href is perfect.
+Finally, you return an HTML table wrapped around the array of employees built with mapping.
+
+<table>
+    <tr>
+        <th>First Name</th>
+        <th>Last Name</th>
+        <th>Description</th>
+    </tr>
+    {employees}
+</table>
+This simple layout of state, properties, and HTML shows how React lets you declaritively create a simple and easy-to-understand component.
+
+Does this code contain both HTML and JavaScript? Yes, this is JSX. There is no requirement to use it. React can be written using pure JavaScript, but the JSX syntax is quite terse. Thanks to rapid work on the Babel.js, the transpiler provides both JSX and ES6 support all at once
+
+JSX also includes bits and pieces of ES6. The one used in the code is the arrow function. It avoids creating a nested function() with its own scoped this, and avoids needing a self variable.
+
+Worried about mixing logic with your structure? React’s APIs encourage nice, declarative structure combined with state and properties. Instead of mixing a bunch of unrelated JavaScript and HTML, React encourages building simple components with small bits of related state and properties that work well together. It lets you look at a single component and understand the design. Then they are easy to combine together for bigger structures.
+
+Next, you need to actually define what an <Employee /> is.
+
+src/main/resources/static/app.js - Employee component
+class Employee extends React.Component{
+	render() {
+		return (
+			<tr>
+				<td>{this.props.employee.firstName}</td>
+				<td>{this.props.employee.lastName}</td>
+				<td>{this.props.employee.description}</td>
+			</tr>
+		)
+	}
+}
+This component is very simple. It has a single HTML table row wrapped around the employee’s three properties. The property itself is this.props.employee. Notice how passing in a JavaScript object makes it easy to pass along data fetched from the server?
+
+Because this component doesn’t manage any state nor does it deal with user input, there is nothing else to do. This might tempt you to cram it into the <EmployeeList /> up above. Don’t do it! Instead, splitting your app up into small components that each do one job will make it easier to build up functionality in the future.
+
+The last step is to render the whole thing.
+
+src/main/resources/static/app.js - rendering code
+React.render(
+	<App />,
+	document.getElementById('react')
+)
+React.render() accepts two arguments: a React component you defined as well as a DOM node to inject it into. Remember how you saw the <div id="react"></div> item earlier from the HTML page? This is where it gets picked up and plugged in.
+
+With all this in place, re-run the application (./mvnw spring-boot:run) and visit http://localhost:8080.
+
+basic 1
+You can see the initial employee loaded up by the system.
+
+Remember using cURL to create new entries? Do that again.
+
+curl -X POST localhost:8080/api/employees -d '{"firstName": "Bilbo", "lastName": "Baggins", "description": "burglar"}' -H 'Content-Type:application/json'
+Refresh the browser, and you should see the new entry:
+
+basic 2
+And now you can see both of them listed on the web site.
+
+Review
+
+In this section:
+
+You defined a domain object and a corresponding repository.
+You let Spring Data REST export it with full blown hypermedia controls.
+You created two simple React components in a parent-child relationship.
+You fetched server data and rendered them in as a simple, static HTML structure.
+Issues?
+
+The web page wasn’t dynamic. You had to refresh the browser to fetch new records.
+The web page didn’t use any hypermedia controls or metadata. Instead, it was hardcoded to fetch data from /api/employees.
+It’s read only. While you can alter records using cURL, the web page offers none of that.
+These are things we can address in the next section.
+
+Part 2 - Hypermedia Controls
+
+In the previous section, you found out how to stand up a backend payroll service to store employee data using Spring Data REST. A key feature it lacked was using the hypermedia controls and navigation by links. Instead, it hard coded the path to find data.
+
+Feel free to grab the code from this repository and follow along. This section is based on the previous section’s app with extra things added.
+
+In the beginning there was data…​and then there was REST
+
+ I am getting frustrated by the number of people calling any HTTP-based interface a REST API. Today’s example is the SocialSite REST API. That is RPC. It screams RPC…​.What needs to be done to make the REST architectural style clear on the notion that hypertext is a constraint? In other words, if the engine of application state (and hence the API) is not being driven by hypertext, then it cannot be RESTful and cannot be a REST API. Period. Is there some broken manual somewhere that needs to be fixed?
+— Roy T. Fielding 
+http://roy.gbiv.com/untangled/2008/rest-apis-must-be-hypertext-driven
+So, what exactly ARE hypermedia controls, i.e. hypertext, and how can you use them? To find out, let’s take a step back and look at the core mission of REST.
+
+The concept of REST was to borrow ideas that made the web so successful and apply them to APIs. Despite the web’s vast size, dynamic nature, and low rate that clients, i.e. browsers, are updated, the web is an amazing success. Roy Fielding sought to use some of its constraints and features and see if that would afford similar expansion of API production and consumption.
+
+One of the constraints is to limit the number of verbs. For REST, the primary ones are GET, POST, PUT, DELETE, and PATCH. There are others, but we won’t get into them here.
+
+GET - fetch the state of a resource without altering the system
+POST - create a new resource without saying where
+PUT - replace an existing resource, overwriting whatever else is already there (if anything)
+DELETE - remove an existing resource
+PATCH - alter an existing resource partially
+These are standardized HTTP verbs with well written specs. By picking up and using already coined HTTP operations, we don’t have to invent a new language and educate the industry.
+
+Another constraint of REST is to use media types to define the format of data. Instead of everyone writing their own dialect for the exchange of information, it would be prudent to develop some media types. One of the most popular ones to be accepted is HAL, media type application/hal+json. It is Spring Data REST’s default media type. A keen value is that there is no centralized, single media type for REST. Instead, people can develop media types and plug them in. Try them out. As different needs become available, the industry can flexibly move.
+
+A key feature of REST is to include links to relevant resources. For example, if you were looking at an order, a RESTful API would include a link to the related customer, links to the catalog of items, and perhaps a link to the store from which the order was placed. In this section, you will introduce paging, and see how to also use navigational paging links.
+
+Turning on paging from the backend
+
+To get underway with using frontend hypermedia controls, you need to turn on some extra controls. Spring Data REST provides paging support. To use it, just tweak the repository definition:
+
+src/main/java/com/greglturnquist/payroll/EmployeeRepository.java
+public interface EmployeeRepository extends PagingAndSortingRepository<Employee, Long> {
+
+}
+Your interface now extends PagingAndSortingRepository which adds extra options to set page size, and also adds navigational links to hop from page to page. The rest of the backend is the same (exception for some extra pre-loaded data to make things interesting).
+
+Restart the application (./mvnw spring-boot:run) and see how it works.
+
+$ curl localhost:8080/api/employees?size=2
+{
+  "_links" : {
+    "first" : {
+      "href" : "http://localhost:8080/api/employees?page=0&size=2"
+    },
+    "self" : {
+      "href" : "http://localhost:8080/api/employees"
+    },
+    "next" : {
+      "href" : "http://localhost:8080/api/employees?page=1&size=2"
+    },
+    "last" : {
+      "href" : "http://localhost:8080/api/employees?page=2&size=2"
+    }
+  },
+  "_embedded" : {
+    "employees" : [ {
+      "firstName" : "Frodo",
+      "lastName" : "Baggins",
+      "description" : "ring bearer",
+      "_links" : {
+        "self" : {
+          "href" : "http://localhost:8080/api/employees/1"
+        }
+      }
+    }, {
+      "firstName" : "Bilbo",
+      "lastName" : "Baggins",
+      "description" : "burglar",
+      "_links" : {
+        "self" : {
+          "href" : "http://localhost:8080/api/employees/2"
+        }
+      }
+    } ]
+  },
+  "page" : {
+    "size" : 2,
+    "totalElements" : 6,
+    "totalPages" : 3,
+    "number" : 0
+  }
+}
+The default page size is 20, so to see it in action, ?size=2 applied. As expected, only two employees are listed. In addition, there is also a first, next, and last link. There is also the self link, free of context including page parameters.
+
+If you navigate to the next link, you’ll then see a prev link as well:
+
+$ curl "http://localhost:8080/api/employees?page=1&size=2"
+{
+  "_links" : {
+    "first" : {
+      "href" : "http://localhost:8080/api/employees?page=0&size=2"
+    },
+    "prev" : {
+      "href" : "http://localhost:8080/api/employees?page=0&size=2"
+    },
+    "self" : {
+      "href" : "http://localhost:8080/api/employees"
+    },
+    "next" : {
+      "href" : "http://localhost:8080/api/employees?page=2&size=2"
+    },
+    "last" : {
+      "href" : "http://localhost:8080/api/employees?page=2&size=2"
+    }
+  },
+...
+ When using "&" in URL query parameters, the command line thinks it’s a line break. Wrap the whole URL with quotation marks to bypass that.
+That looks neat, but it will be even better when you update the frontend to take advantage of that.
+
+Navigating by relationship
+
+That’s it! No more changes are needed on the backend to start using the hypermedia controls Spring Data REST provides out of the box. You can switch to working on the frontend. (That’s part of the beauty of Spring Data REST. No messy controller updates!)
+
+ It’s important to point out, this application isn’t "Spring Data REST-specific." Instead, it uses HAL, URI Templates, and other standards. That’s how using rest.js is a snap: that library comes with HAL support.
+In the previous section, you hardcoded the path to /api/employees. Instead, the ONLY path you should hardcode is the root.
+
+...
+var root = '/api';
+...
+With a handy little follow() function, you can now start from the root and navigate to where you need!
+
+componentDidMount() {
+    this.loadFromServer(this.state.pageSize);
+}
+In the previous section, the loading was done directly inside componentDidMount(). In this section, we are making it possible to reload the entire list of employees when the page size is updated. To do so, we have moved things into loadFromServer().
+
+loadFromServer(pageSize) {
+    follow(client, root, [
+        {rel: 'employees', params: {size: pageSize}}]
+    ).then(employeeCollection => {
+        return client({
+            method: 'GET',
+            path: employeeCollection.entity._links.profile.href,
+            headers: {'Accept': 'application/schema+json'}
+        }).then(schema => {
+            this.schema = schema.entity;
+            return employeeCollection;
+        });
+    }).done(employeeCollection => {
+        this.setState({
+            employees: employeeCollection.entity._embedded.employees,
+            attributes: Object.keys(this.schema.properties),
+            pageSize: pageSize,
+            links: employeeCollection.entity._links});
+    });
+}
+loadFromServer is very similar the previous section, but instead if uses follow():
+
+The first argument to the follow() function is the client object used to make REST calls.
+The second argument is the root URI to start from.
+The third argument is an array of relationships to navigate along. Each one can be a string or an object.
+The array of relationships can be as simple as ["employees"], meaning when the first call is made, look in _links for the relationship (or rel) named employees. Find its href and navigate to it. If there is another relationship in the array, rinse and repeat.
+
+Sometimes, a rel by itself isn’t enough. In this fragment of code, it also plugs in a query parameter of ?size=<pageSize>. There are other options that can be supplied, as you’ll see further along.
+
+Grabbing JSON Schema metadata
+
+After navigating to employees with the size-based query, the employeeCollection is at your fingertips. In the previous section, we called it day and displayed that data inside <EmployeeList />. Today, you are performing another call to grab some JSON Schema metadata found at /api/profile/employees/.
+
+You can see the data yourself:
+
+$ curl http://localhost:8080/api/profile/employees -H 'Accept:application/schema+json'
+{
+  "title" : "Employee",
+  "properties" : {
+    "firstName" : {
+      "title" : "First name",
+      "readOnly" : false,
+      "type" : "string"
+    },
+    "lastName" : {
+      "title" : "Last name",
+      "readOnly" : false,
+      "type" : "string"
+    },
+    "description" : {
+      "title" : "Description",
+      "readOnly" : false,
+      "type" : "string"
+    }
+  },
+  "definitions" : { },
+  "type" : "object",
+  "$schema" : "http://json-schema.org/draft-04/schema#"
+}
+ The default form of metadata at /profile/employees is ALPS. In this case, though, you are using content negotation to fetch JSON Schema.
+By capturing this information in the`<App />` component’s state, you can make good use of it later on when building input forms.
+
+Creating new records
+
+Equipped with this metadata, you can now add some extra controls to the UI. Create a new React component, <CreateDialog />.
+
+class CreateDialog extends React.Component {
+
+	constructor(props) {
+		super(props);
+		this.handleSubmit = this.handleSubmit.bind(this);
+	}
+
+	handleSubmit(e) {
+		e.preventDefault();
+		var newEmployee = {};
+		this.props.attributes.forEach(attribute => {
+			newEmployee[attribute] = React.findDOMNode(this.refs[attribute]).value.trim();
+		});
+		this.props.onCreate(newEmployee);
+
+		// clear out the dialog's inputs
+		this.props.attributes.forEach(attribute => {
+			React.findDOMNode(this.refs[attribute]).value = '';
+		});
+
+		// Navigate away from the dialog to hide it.
+		window.location = "#";
+	}
+
+	render() {
+		var inputs = this.props.attributes.map(attribute =>
+			<p key={attribute}>
+				<input type="text" placeholder={attribute} ref={attribute} className="field" />
+			</p>
+		);
+
+		return (
+			<div>
+				<a href="#createEmployee">Create</a>
+
+				<div id="createEmployee" className="modalDialog">
+					<div>
+						<a href="#" title="Close" className="close">X</a>
+
+						<h2>Create new employee</h2>
+
+						<form>
+							{inputs}
+							<button onClick={this.handleSubmit}>Create</button>
+						</form>
+					</div>
+				</div>
+			</div>
+		)
+	}
+
+}
+This new component has both a handleSubmit() function as well as the expected render() function.
+
+Let’s dig into these functions in reverse order, and first look at the render() function.
+
+Rendering
+
+Your code maps over the JSON Schema data found in the attributes property and converts it into an array of <p><input></p> elements.
+
+key is again needed by React to distinguish between multiple child nodes.
+It’s a simple text-based entry field.
+placeholder is where we can show the user with field is which.
+You may used to having a name attribute, but it’s not necessary. With React, ref is the mechanism to grab a particular DOM node (as you’ll soon see).
+This represents the dynamic nature of the component, driven by loading data from the server.
+
+Inside this component’s top-level <div> is an anchor tag and another <div>. The anchor tag is the button to open the dialog. And the nested <div> is the hidden dialog itself. In this example, you are use pure HTML5 and CSS3. No JavaScript at all! You can see the CSS code used to show/hide the dialog. We won’t dive into that here.
+
+Nestled inside <div id="createEmployee"> is a form where your dynamic list of input fields are injected followed by the Create button. That button has an onClick={this.handleSubmit} event handler. This is the React way of registering an event handler.
+
+ React doesn’t create a fistful of event handlers on every DOM element. Instead, it has a much more performant and sophisticated solution. The point being you don’t have to manage that infrastructure and can instead focus on writing functional code.
+Handling user input
+
+The handleSubmit() function first stops the event from bubbling further up the hierarchy. It then uses the same JSON Schema attribute property to find each <input> using React.findDOMNode(this.refs[attribute]).
+
+this.refs is a way to reach out and grab a particular React component by name. In that sense, you are ONLY getting the virtual DOM component. To grab the actual DOM element you need to use React.findDOMNode().
+
+After iterating over every input and building up the newEmployee object, we invoke a callback to onCreate() the new employee. This function is up top inside App.onCreate and was provided to this React component as another property. Look at how that top-level function operates:
+
+onCreate(newEmployee) {
+    follow(client, root, ['employees']).then(employeeCollection => {
+        return client({
+            method: 'POST',
+            path: employeeCollection.entity._links.self.href,
+            entity: newEmployee,
+            headers: {'Content-Type': 'application/json'}
+        })
+    }).then(response => {
+        return follow(client, root, [
+            {rel: 'employees', params: {'size': this.state.pageSize}}]);
+    }).done(response => {
+        this.onNavigate(response.entity._links.last.href);
+    });
+}
+Once again, use the follow() function to navigate to the employees resource where POST operations are performed. In this case, there was no need to apply any parameters, so the string-based array of rels is fine. In this situation, the POST call is returned. This allows the next then() clause to handle processing the outcome of the POST.
+
+New records are typically added to the end of the dataset. Since you are looking at a certain page, it’s logical to expect the new employee record to not be on the current page. To handle this, you need to fetch a new batch of data with the same page size applied. That promise is returned for the final clause inside done().
+
+Since the user probably wants to see the newly created employee, you can then use the hypermedia controls and navigate to the last entry.
+
+This introduces the concept of paging in our UI. Let’s tackle that next!
+
+First time using a promise-based API? Promises are a way to kick of asynchronous operations and then register a function to respond when the task is done. Promises are designed to be chained together to avoid "callback hell". Look at the following flow:
+
+when.promise(async_func_call())
+	.then(function(results) {
+		/* process the outcome of async_func_call */
+	})
+	.then(function(more_results) {
+		/* process the previous then() return value */
+	})
+	.done(function(yet_more) {
+		/* process the previous then() and wrap things up */
+	});
+For more details, check out this tutorial on promises.
+
+The secret thing to remember with promises is that then() functions need to return something, whether it’s a value or another promise. done() functions do NOT return anything, and you don’t chain anything after it. In case you haven’t noticed yet, client (which is an instance of rest from rest.js) as well as the follow function return promises.
+
+Paging through data
+
+You set up paging on the backend and have already starting taking advantage of it when creating new employees.
+
+In the previous section, you used the page controls to jump to the last page. It would be really handy to dynamically apply it to the UI and let the user navigate as desired. Adjusting the controls dynamically based on available navigation links would be great.
+
+First, let’s check out the onNavigate() function you used.
+
+onNavigate(navUri) {
+    client({method: 'GET', path: navUri}).done(employeeCollection => {
+        this.setState({
+            employees: employeeCollection.entity._embedded.employees,
+            attributes: this.state.attributes,
+            pageSize: this.state.pageSize,
+            links: employeeCollection.entity._links
+        });
+    });
+}
+This is defined at the top, inside App.onNavigate. Again, this is to allow managing the state of the UI in the top component. After passing onNavigate() down to the <EmployeeList /> React component, the following handlers are coded up to handle clicking on some buttons:
+
+handleNavFirst(e){
+    e.preventDefault();
+    this.props.onNavigate(this.props.links.first.href);
+}
+
+handleNavPrev(e) {
+    e.preventDefault();
+    this.props.onNavigate(this.props.links.prev.href);
+}
+
+handleNavNext(e) {
+    e.preventDefault();
+    this.props.onNavigate(this.props.links.next.href);
+}
+
+handleNavLast(e) {
+    e.preventDefault();
+    this.props.onNavigate(this.props.links.last.href);
+}
+Each of these functions intercepts the default event and stops it from bubbling up. Then it invokes the onNavigate() function with the proper hypermedia link.
+
+Now conditionally display the controls based on which links appear in the hypermedia links in EmployeeList.render:
+
+render() {
+    var employees = this.props.employees.map(employee =>
+        <Employee key={employee._links.self.href} employee={employee} onDelete={this.props.onDelete}/>
+    );
+
+    var navLinks = [];
+    if ("first" in this.props.links) {
+        navLinks.push(<button key="first" onClick={this.handleNavFirst}>&lt;&lt;</button>);
+    }
+    if ("prev" in this.props.links) {
+        navLinks.push(<button key="prev" onClick={this.handleNavPrev}>&lt;</button>);
+    }
+    if ("next" in this.props.links) {
+        navLinks.push(<button key="next" onClick={this.handleNavNext}>&gt;</button>);
+    }
+    if ("last" in this.props.links) {
+        navLinks.push(<button key="last" onClick={this.handleNavLast}>&gt;&gt;</button>);
+    }
+
+    return (
+        <div>
+            <input ref="pageSize" defaultValue={this.props.pageSize} onInput={this.handleInput}/>
+            <table>
+                <tr>
+                    <th>First Name</th>
+                    <th>Last Name</th>
+                    <th>Description</th>
+                    <th></th>
+                </tr>
+                {employees}
+            </table>
+            <div>
+                {navLinks}
+            </div>
+        </div>
+    )
+}
+As in the previous section, it still transforms this.props.employees into an array of <Element /> components. Then it builds up an array of navLinks, an array of HTML buttons.
+
+ Because React is based on XML, you can’t put "<" inside the <button> element. You must instead use the encoded version.
+Then you can see {navLinks} inserted towards the bottom of the returned HTML.
+
+Deleting existing records
+
+Deleting entries is much easier. Get a hold of its HAL-based record and apply DELETE to its self link.
+
+class Employee extends React.Component {
+
+	constructor(props) {
+		super(props);
+		this.handleDelete = this.handleDelete.bind(this);
+	}
+
+	handleDelete() {
+		this.props.onDelete(this.props.employee);
+	}
+
+	render() {
+		return (
+			<tr>
+				<td>{this.props.employee.firstName}</td>
+				<td>{this.props.employee.lastName}</td>
+				<td>{this.props.employee.description}</td>
+				<td>
+					<button onClick={this.handleDelete}>Delete</button>
+				</td>
+			</tr>
+		)
+	}
+}
+This updated version of the Employee component shows an extra entry at the end of the row, a delete button. It is registered to invoke this.handleDelete when clicked upon. The handleDelete() function can then invoke the callback passed down while supplying the contextually important this.props.employee record.
+
+ This shows again that it is easiest to manage state in the top component, in one place. This might not always be the case, but oftentimes, managing state in one place makes it easier to keep straight and simpler. By invoking the callback with component-specific details (this.props.onDelete(this.props.employee)), it is very easy to orchestrate behavior between components.
+Tracing the onDelete() function back to the top at App.onDelete, you can see how it operates:
+
+onDelete(employee) {
+    client({method: 'DELETE', path: employee._links.self.href}).done(response => {
+        this.loadFromServer(this.state.pageSize);
+    });
+}
+The behavior to apply after deleting a record with a page-based UI is a bit tricky. In this case, it reloads the whole data from the server, applying the same page size. Then it shows the first page.
+
+If you are deleting the last record on the last page, it will jump to the first page.
+
+Adjusting the page size
+
+One way to see how hypermedia really shines is to update the page size. Spring Data REST fluidly updates the navigational links based on the page size.
+
+There is an HTML element at the top of ElementList.render: <input ref="pageSize" defaultValue={this.props.pageSize} onInput={this.handleInput}/>.
+
+ref="pageSize" makes it easy to grab that element via this.refs.pageSize.
+defaultValue initializes it with the state’s pageSize.
+onInput registers a handler as shown below.
+handleInput(e) {
+    e.preventDefault();
+    var pageSize = React.findDOMNode(this.refs.pageSize).value;
+    if (/^[0-9]+$/.test(pageSize)) {
+        this.props.updatePageSize(pageSize);
+    } else {
+        React.findDOMNode(this.refs.pageSize).value =
+            pageSize.substring(0, pageSize.length - 1);
+    }
+}
+It stops the event from bubbling up. Then it uses the ref attribute of the <input> to find the DOM node and extract its value, all through React’s findDOMNode() helper function. It tests if the input is really a number by checking if it’s a string of digits. If so, it invokes the callback, sending the new page size to the App React component. If not, the character just entered is stripped off the input.
+
+What does App do when it gets a updatePageSize()? Check it out:
+
+updatePageSize(pageSize) {
+    if (pageSize !== this.state.pageSize) {
+        this.loadFromServer(pageSize);
+    }
+}
+Because a new page size causes changes to all the navigation links, it’s best to refetch the data and start from the beginning.
+
+Putting it all together
+
+With all these nice additions, you now have a really vamped up UI.
+
+hypermedia 1
+You can see the page size setting at the top, the delete buttons on each row, and the navigational buttons at the bottom. The navigational buttons illustrate a powerful feature of hypermedia controls.
+
+Down below, you can see the CreateDialog with the metadata plugged into the HTML input placeholders.
+
+hypermedia 2
+This really shows the power of using hypermedia coupled with domain-driven metadata (JSON Schema). The web page doesn’t have to know which field is which. Instead, the user can see it and know how to use it. If you added another field to the Employee domain object, this pop-up would automatically display it.
+
+Review
+
+In this section:
+
+You turned on Spring Data REST’s paging feature.
+You threw out hardcoded URI paths and started using the root URI combined with relationship names or "rels".
+You updated the UI to dynamically use page-based hypermedia controls.
+You added the ability to create & delete employees and update the UI as needed.
+You made it possible to change the page size and have the UI flexibly respond.
+Issues?
+
+You made the webpage dynamic. But open another browser tab and point it at the same app. Changes in one tab won’t update anything in the other.
+
+That is something we can address in the next section.
+
+Part 3 - Conditional Operations
+
+In the previous section, you found out how to turn on Spring Data REST’s hypermedia controls, have the UI navigate by paging, and dynamically resize based on changing the page size. You added the ability to create and delete employees and have the pages adjust. But no solution is complete with taking into consideration updates made by other users on the same bit of data you are currently editing.
+
+Feel free to grab the code from this repository and follow along. This section is based on the previous section’s app with extra things added.
+
+To PUT or not to PUT, that is the question
+
+When you fetch a resource, there is risk is that it might go stale if someone else updates it. To deal with this, Spring Data REST integrates two technologies: versioning of resources and ETags.
+
+By versioning resources on the backend and using ETags in the frontend, it is possible to conditially PUT a change. In other words, you can detect if a resource has changed and prevent a PUT (or a PATCH) from stomping on someone else’s update. Let’s check it out.
+
+Versioning REST resources
+
+To support versioning of resources, define a version attribute for your domain objects that need this type of protection.
+
+src/main/java/com/greglturnquist/payroll/Employee.java
+@Data
+@Entity
+public class Employee {
+
+	private @Id @GeneratedValue Long id;
+	private String firstName;
+	private String lastName;
+	private String description;
+
+	private @Version @JsonIgnore Long version;
+
+	private Employee() {}
+
+	public Employee(String firstName, String lastName, String description) {
+		this.firstName = firstName;
+		this.lastName = lastName;
+		this.description = description;
+	}
+}
+The version field is annotated with javax.persistence.Version. It causes a value to be automatically stored and updated everytime a row is inserted and updated.
+When fetching an individual resource (not a collection resource), Spring Data REST will automatically add an ETag response header with the value of this field.
+
+Fetching individual resources and their headers
+
+In the previous section you used the collection resource to gather data and populate the UI’s HTML table. With Spring Data REST, the _embedded data set is considered a preview of data. While useful for glancing at data, to get headers like ETags, you need to fetch each resource individually.
+
+In this version, loadFromServer is updated to fetch the collection and then use the URIs to retrieve each individual resource.
+
+src/main/resources/static/app.js - Fetching each resource
+loadFromServer(pageSize) {
+    follow(client, root, [
+        {rel: 'employees', params: {size: pageSize}}]
+    ).then(employeeCollection => {
+        return client({
+            method: 'GET',
+            path: employeeCollection.entity._links.profile.href,
+            headers: {'Accept': 'application/schema+json'}
+        }).then(schema => {
+            this.schema = schema.entity;
+            this.links = employeeCollection.entity._links;
+            return employeeCollection;
+        });
+    }).then(employeeCollection => {
+        return employeeCollection.entity._embedded.employees.map(employee =>
+                client({
+                    method: 'GET',
+                    path: employee._links.self.href
+                })
+        );
+    }).then(employeePromises => {
+        return when.all(employeePromises);
+    }).done(employees => {
+        this.setState({
+            employees: employees,
+            attributes: Object.keys(this.schema.properties),
+            pageSize: pageSize,
+            links: this.links
+        });
+    });
+}
+The follow() function goes to the employees collection resource.
+
+The then(employeeCollection ⇒ …​) clause creates a call to fetch JSON Schema data. This has a sub-then clause to store the metadata and navigational links in the <App/> component.
+
+Notice that this embedded promise returns the employeeCollection. That way, the collection can be passed onto the next call while letting you grab the metadata along the way.
+The second then(employeeCollection ⇒ …​) clause converts the collection of employees into an array of GET promises to fetch each individual resource. This is what you need to fetch an ETag header for each employee.
+
+The then(employeePromises ⇒ …​) clause takes the array of GET promises and merges them into a single promise with when.all(), resolved when all the GET promises are resolved.
+
+loadFromServer wraps up with done(employees ⇒ …​) where the UI state is updated using this amalgamation of data.
+
+This chain is implemented in other places as well. For example, onNavigate(), which is used to jump to different pages, has been updated to fetch individual resources. Since it’s mostly the same as what’s shown above, it’s been left out of this section.
+
+Updating existing resources
+
+In this section, you are adding an UpdateDialog React component to edit existing employee records.
+
+src/main/resources/static/app.js - UpdateDialog component
+class UpdateDialog extends React.Component {
+
+	constructor(props) {
+		super(props);
+		this.handleSubmit = this.handleSubmit.bind(this);
+	}
+
+	handleSubmit(e) {
+		e.preventDefault();
+		var updatedEmployee = {};
+		this.props.attributes.forEach(attribute => {
+			updatedEmployee[attribute] = React.findDOMNode(this.refs[attribute]).value.trim();
+		});
+		this.props.onUpdate(this.props.employee, updatedEmployee);
+		window.location = "#";
+	}
+
+	render() {
+		var inputs = this.props.attributes.map(attribute =>
+				<p key={this.props.employee.entity[attribute]}>
+					<input type="text" placeholder={attribute}
+						   defaultValue={this.props.employee.entity[attribute]}
+						   ref={attribute} className="field" />
+				</p>
+		);
+
+		var dialogId = "updateEmployee-" + this.props.employee.entity._links.self.href;
+
+		return (
+			<div key={this.props.employee.entity._links.self.href}>
+				<a href={"#" + dialogId}>Update</a>
+				<div id={dialogId} className="modalDialog">
+					<div>
+						<a href="#" title="Close" className="close">X</a>
+
+						<h2>Update an employee</h2>
+
+						<form>
+							{inputs}
+							<button onClick={this.handleSubmit}>Update</button>
+						</form>
+					</div>
+				</div>
+			</div>
+		)
+	}
+
+};
+This new component has both a handleSubmit() function as well as the expected render() function, similar to the <CreateDialog /> component.
+
+Let’s dig into these functions in reverse order, and first look at the render() function.
+
+Rendering
+
+This component uses the same CSS/HTML tactics to show and hide the dialog as the <CreateDialog /> from the previous section.
+
+It converts the array of JSON Schema attributes into an array of HTML inputs, wrapped in paragraph elements for styling. This is also the same as the <CreateDialog /> with one difference: the fields are loaded with this.props.employee. In the CreateDialog component, the fields are empty.
+
+The id field is built differently. There is only one CreateDialog link on the entire UI, but a separate UpdateDialog link for every row displayed. Hence, the id field is based on the self link’s URI. This is used in both the <div> element’s React key as well as the HTML anchor tag and the hidden pop-up.
+
+Handling user input
+
+The submit button is linked to the component’s handleSubmit() function. This handily uses React.findDOMNode() to extract the details of the pop-up using React refs.
+
+After the input values are extracted and loaded into the updatedEmployee object, the top-level onUpdate() method is invoked. This continues React’s style of one-way binding where the functions to call are pushed from upper level components into the lower level ones. This way, state is still managed at the top.
+
+Conditional PUT
+
+So you’ve gone to all this effort to embed versioning in the data model. Spring Data REST has served up that value as an ETag response header. Here is where you get to put it to good use!
+
+src/main/resources/static/app.js - onUpdate function
+onUpdate(employee, updatedEmployee) {
+    client({
+        method: 'PUT',
+        path: employee.entity._links.self.href,
+        entity: updatedEmployee,
+        headers: {
+            'Content-Type': 'application/json',
+            'If-Match': employee.headers.Etag
+        }
+    }).done(response => {
+        this.loadFromServer(this.state.pageSize);
+    }, response => {
+        if (response.status.code === 412) {
+            alert('DENIED: Unable to update ' +
+                employee.entity._links.self.href + '. Your copy is stale.');
+        }
+    });
+}
+PUT with an If-Match request header causes Spring Data REST to check the value against the current version. If the incoming If-Match value doesn’t match the data store’s version value, Spring Data REST will fail with an HTTP 412 Precondition Failed.
+
+ The spec for Promises/A+ actually defines their API as then(successFunction, errorFunction). So far, you’ve only seen it used with success functions. In the code fragment above, there are two functions. The success function invokes loadFromServer while the error function displays a browser alert about the stale data.
+Putting it all together
+
+With your UpdateDialog React component defined and nicely linked to the top-level onUpdate function, the last step is to wire it into the existing layout of components.
+
+The CreateDialog created in the previous section was put at the top of the EmployeeList because there is only one instance. However, UpdateDialog is tied directly to specific employees. So you can see it plugged in below in the Employee React component:
+
+src/main/resources/static/app.js - Employee with UpdateDialog
+class Employee extends React.Component {
+
+	constructor(props) {
+		super(props);
+		this.handleDelete = this.handleDelete.bind(this);
+	}
+
+	handleDelete() {
+		this.props.onDelete(this.props.employee);
+	}
+
+	render() {
+		return (
+			<tr>
+				<td>{this.props.employee.entity.firstName}</td>
+				<td>{this.props.employee.entity.lastName}</td>
+				<td>{this.props.employee.entity.description}</td>
+				<td>
+					<UpdateDialog employee={this.props.employee}
+								  attributes={this.props.attributes}
+								  onUpdate={this.props.onUpdate}/>
+				</td>
+				<td>
+					<button onClick={this.handleDelete}>Delete</button>
+				</td>
+			</tr>
+		)
+	}
+}
+In this section, you switch from using the collection resource to individual resources. The fields for an employee record are now found at this.props.employee.entity. It gives us access to this.props.employee.headers where we can find ETags.
+
+There are other headers supported by Spring Data REST (like Last-Modified) which aren’t part of this series. So structuring your data this way is handy.
+
+ The structure of .entity and .headers is only pertinent when using rest.js as the REST library of choice. If you use a different library, you will have to adapt as necessary.
+Seeing things in action
+
+Start up the app (./mvnw spring-boot:run).
+
+Open up a tab and navigate to http://localhost:8080.
+
+conditional 1
+Pull up the edit dialog for Frodo.
+
+Open another tab in your browser and pull up the same record.
+
+Make a change to the record in the first tab.
+
+Try to make a change in the second tab.
+
+conditional 2
+conditional 3
+With these mods, you have increased data integrity by avoiding collisions.
+
+Review
+
+In this section:
+
+You configured your domain model with an @Version field for JPA-based optimistic locking.
+You adjusted the frontend to fetch individual resources.
+You plugged the ETag header from an individual resource into an If-Match request header to make PUTs conditional.
+You coded a new UpdateDialog for each employee shown on the list.
+With this plugged in, it’s easy to avoid colliding with other users, or simply overwriting their edits.
+
+Issues?
+
+It’s certainly nice to know when you’re editing a bad record. But is it best to wait until you click "Submit" to find out?
+
+The logic to fetch resources is very similar in both loadFromServer and onNavigate. Do you see ways to avoid duplicate code?
+
+You put the JSON Schema metadata to good use in building up the CreateDialog and the UpdateDialog inputs. Do you see other places to use the metadata to makes things more generic? Imagine you wanted to add five more fields to Employee.java. What would it take to update the UI?
+
+Part 4 - Events
+
+In the previous section, you introduced conditional updates to avoid collisions with other users when editing the same data. You also learned how to version data on the backend with optimistic locking. You got a tip off if someone edited the same record so you could refresh the page and get the update.
+
+That’s good. But do you know what’s even better? Having the UI dynamically respond when other people update the resources.
+
+In this section you’ll learn how to use Spring Data REST’s built in event system to detect changes in the backend and publish updates to ALL users through Spring’s WebSocket support. Then you’ll be able to dynamically adjust clients as the data updates.
+
+Feel free to grab the code from this repository and follow along. This section is based on the previous section’s app with extra things added.
+
+Adding Spring WebSocket support to the project
+
+Before getting underway, you need to add a dependency to your project’s pom.xml file:
+
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-websocket</artifactId>
+</dependency>
+This bring in Spring Boot’s WebSocket starter.
+
+Configuring WebSockets with Spring
+
+Spring comes with powerful WebSocket support. One thing to recognize is that a WebSocket is a very low level protocol. It does little more than offer the means to transmit data between client and server. The recommendation is to use a sub-protocol (STOMP for this section) to actually encode data and routes.
+
+The follow code is used to configure WebSocket support on the server side:
+
+@Component
+@EnableWebSocketMessageBroker
+public class WebSocketConfiguration extends AbstractWebSocketMessageBrokerConfigurer {
+
+	static final String MESSAGE_PREFIX = "/topic";
+
+	@Override
+	public void registerStompEndpoints(StompEndpointRegistry registry) {
+		registry.addEndpoint("/payroll").withSockJS();
+	}
+
+	@Override
+	public void configureMessageBroker(MessageBrokerRegistry registry) {
+		registry.enableSimpleBroker(MESSAGE_PREFIX);
+		registry.setApplicationDestinationPrefixes("/app");
+	}
+}
+@EnableWebSocketMessageBroker turns on WebSocket support.
+AbstractWebSocketMessageBrokerConfigurer provides a convenient base class to configure basic features.
+MESSAGE_PREFIX is the prefix you will prepend to every message’s route.
+registerStompEndpoints() is used to configure the endpoint on the backend for clients and server to link (/payroll).
+configureMessageBroker() is used to configure the broker used to relay messages between server and client.
+With this configuration, it’s now possible to tap into Spring Data REST events and publish them over a WebSocket.
+
+Subscribing to Spring Data REST events
+
+Spring Data REST generates several application events based on actions occurring on the repositories. The follow code shows how to subscribe to some of these events:
+
+@Component
+@RepositoryEventHandler(Employee.class)
+public class EventHandler {
+
+	private final SimpMessagingTemplate websocket;
+
+	private final EntityLinks entityLinks;
+
+	@Autowired
+	public EventHandler(SimpMessagingTemplate websocket, EntityLinks entityLinks) {
+		this.websocket = websocket;
+		this.entityLinks = entityLinks;
+	}
+
+	@HandleAfterCreate
+	public void newEmployee(Employee employee) {
+		this.websocket.convertAndSend(
+				MESSAGE_PREFIX + "/newEmployee", getPath(employee));
+	}
+
+	@HandleAfterDelete
+	public void deleteEmployee(Employee employee) {
+		this.websocket.convertAndSend(
+				MESSAGE_PREFIX + "/deleteEmployee", getPath(employee));
+	}
+
+	@HandleAfterSave
+	public void updateEmployee(Employee employee) {
+		this.websocket.convertAndSend(
+				MESSAGE_PREFIX + "/updateEmployee", getPath(employee));
+	}
+
+	/**
+	 * Take an {@link Employee} and get the URI using Spring Data REST's {@link EntityLinks}.
+	 *
+	 * @param employee
+	 */
+	private String getPath(Employee employee) {
+		return this.entityLinks.linkForSingleResource(employee.getClass(),
+				employee.getId()).toUri().getPath();
+	}
+
+}
+@RepositoryEventHandler(Employee.class) flags this class to trap events based on employees.
+SimpMessagingTemplate and EntityLinks are autowired from the application context.
+The @HandleXYZ annotations flag the methods that need to listen to. These methods must be public.
+Each of these handler methods invokes SimpMessagingTemplate.convertAndSend() to transmit a message over the WebSocket. This is a pub-sub approach so that one message is relayed to every attached consumer.
+
+The route of each message is different, allowing multiple messages to be sent to distinct receivers on the client while only needing one open WebSocket, a resource-efficient approach.
+
+getPath() uses Spring Data REST’s EntityLinks to look up the path for a given class type and id. To serve the client’s needs, this Link object is converted to a Java URI with its path extracted.
+
+ EntityLinks comes with several utility methods to programmatically find the paths of various resources, whether single or for collections.
+In essense, you are listening for create, update, and delete events, and after they are completed, sending notice of them to all clients. It’s also possible to intercept such operations BEFORE they happen, and perhaps log them, block them for some reason, or decorate the domain objects with extra information. (In the next section, we’ll see a VERY handy use for this!)
+
+Configuring a JavaScript WebSocket
+
+Next step is to write some client-side code to consume WebSocket events. The follow chunk in them main app pulls in a module.
+
+var stompClient = require('./websocket-listener')
+That module is shown below:
+
+'use strict';
+
+var SockJS = require('sockjs-client'); (1)
+require('stompjs'); (2)
+
+function register(registrations) {
+	var socket = SockJS('/payroll'); (3)
+	var stompClient = Stomp.over(socket);
+	stompClient.connect({}, function(frame) {
+		registrations.forEach(function (registration) { (4)
+			stompClient.subscribe(registration.route, registration.callback);
+		});
+	});
+}
+
+module.exports.register = register;
+1	You pull in the SockJS JavaScript library for talking over WebSockets.
+2	You pull in the stomp-websocket JavaScript library to use the STOMP sub-protocol.
+3	Here is where the WebSocket is pointed at the application’s /payroll endpoint.
+4	Iterate over the array of registrations supplied so each can subscribe for callback as messages arrive.
+Each registration entry has a route and a callback. In the next section, you can see how to register event handlers.
+
+Registering for WebSocket events
+
+In React, a component’s componentDidMount() is the function that gets called after it has been rendered in the DOM. That is also the right time to register for WebSocket events, because the component is now online and ready for business. Checkout the code below:
+
+componentDidMount() {
+    this.loadFromServer(this.state.pageSize);
+    stompClient.register([
+        {route: '/topic/newEmployee', callback: this.refreshAndGoToLastPage},
+        {route: '/topic/updateEmployee', callback: this.refreshCurrentPage},
+        {route: '/topic/deleteEmployee', callback: this.refreshCurrentPage}
+    ]);
+}
+The first line is the same as before, where all the employees are fetched from the server using page size. The second line shows an array of JavaScript objects being registered for WebSocket events, each with a route and a callback.
+
+When a new employee is created, the behavior is to refresh the data set and then use the paging links to navigate to the last page. Why refresh the data before navigating to the end? It’s possible that adding a new record causes a new page to get created. While it’s possible to calculate if this will happen, it subverts the point of hypermedia. Instead of cobbling together customize page counts, it’s better to use existing links and only go down that road if there is a performance-driving reason to do so.
+
+When an employee is updated or deleted, the behavior is to refresh the current page. When you update a record, it impacts the page your are viewing. When you delete a record on the current page, a record from the next page will get pulled into the current one, hence the need to also refresh the current page.
+
+ There is no requirement for these WebSocket messages to start with /topic. It is simply a common convention that indicates pub-sub semantics.
+In the next section, you can see the actual operations to perform these operations.
+
+Reacting to WebSocket events and updating the UI state
+
+The following chunk of code contains the two callbacks used to update UI state when a WebSocket event is received.
+
+refreshAndGoToLastPage(message) {
+    follow(client, root, [{
+        rel: 'employees',
+        params: {size: this.state.pageSize}
+    }]).done(response => {
+        this.onNavigate(response.entity._links.last.href);
+    })
+}
+
+refreshCurrentPage(message) {
+    follow(client, root, [{
+        rel: 'employees',
+        params: {
+            size: this.state.pageSize,
+            page: this.state.page.number
+        }
+    }]).then(employeeCollection => {
+        this.links = employeeCollection.entity._links;
+        this.page = employeeCollection.entity.page;
+
+        return employeeCollection.entity._embedded.employees.map(employee => {
+            return client({
+                method: 'GET',
+                path: employee._links.self.href
+            })
+        });
+    }).then(employeePromises => {
+        return when.all(employeePromises);
+    }).then(employees => {
+        this.setState({
+            page: this.page,
+            employees: employees,
+            attributes: Object.keys(this.schema.properties),
+            pageSize: this.state.pageSize,
+            links: this.links
+        });
+    });
+}
+refreshAndGoToLastPage() uses the familiar follow() function to navigate to the employees link with the size parameter applied, plugging in this.state.pageSize. When the response is received, you then invoke the same onNavigate() function from the last section, and jump to the last page, the one where the new record will be found.
+
+refreshCurrentPage() also uses the follow() function but applies this.state.pageSize to size and this.state.page.number to page. This fetches the same page you are currently looking at and updates the state accordingly.
+
+ This behavior tells every client to refresh their current page when an update or delete message is sent. It’s possible that their current page may have nothing to do with the current event. However, it can be tricky to figure that out. What if the record that was deleted was on page two and you are looking at page three? Every entry would change. But is this desired behavior at all? Maybe, maybe not.
+Moving state management out of the local updates
+
+Before you finish this section, there is something to recognize. You just added a new way for the state in the UI to get updated: when a WebSocket message arrives. But the old way to update the state is still there.
+
+To simplify your code’s management of state, it simplifies things if you remove the old way. In other words, submit your POST, PUT, and DELETE calls, but don’t use their results to update the UI’s state. Instead, wait for the WebSocket event to circle back and then do the update.
+
+The follow chunk of code shows the same onCreate() function as the previous section, only simplified:
+
+onCreate(newEmployee) {
+    follow(client, root, ['employees']).done(response => {
+        client({
+            method: 'POST',
+            path: response.entity._links.self.href,
+            entity: newEmployee,
+            headers: {'Content-Type': 'application/json'}
+        })
+    })
+}
+Here, the follow() function is used to get to the employees link, and then the POST operation is applied. Notice how client({method: 'GET' …​}) has no then() or done() like before? The event handler to listen for updates is now found in refreshAndGoToLastPage() which you just looked at.
+
+Putting it all together
+
+With all these mods in place, fire up the app (./mvnw spring-boot:run) and poke around with it. Open up two browser tabs and resize so you can see them both. Start making updates in one and see how they instantly update the other tab. Open up your phone and visit the same page. Find a friend and ask him or her to do the same thing. You might find this type of dynamic updating more keen.
+
+Want a challenge? Try the exercise from the previous section where you open the same record in two different browser tabs. Try to update it in one and NOT see it update in the other. If it’s possible, the conditional PUT code should still protect you. But it may be trickier to pull that off!
+
+Review
+
+In this section:
+
+You configured Spring’s WebSocket suport with SockJS fallback.
+You subscribed for create, update, and delete events from Spring Data REST to dynamically update the UI.
+You published the URI of affected REST resources along with a contextual message ("/topic/newEmployee", "/topic/updateEmployee", etc.).
+You registered WebSocket listeners in the UI to listen for these events.
+You wired the listeners to handlers to update the UI state.
+With all these features, it’s easy to run two browsers, side-by-side, and see how updating one ripples to the other.
+
+Issues?
+
+While multiple displays nicely update, polishing the precise behavior is warranted. For example, creating a new user will cause ALL users to jump to the end. Any thoughts on how this should be handled?
+
+Paging is useful, but offers a tricky state to manage. The costs are low on this sample app, and React at very efficient at updating the DOM without causing lots of flickering in the UI. But with a more complex app, not all of these approaches will fit.
+
+When designing with paging in mind, you have to decide what is the expected behavior between clients and if there needs to updates or not. Depending on your requirements and performance of the system, the existing navigational hypermedia may be sufficent.
+
+Part 5 - Securing the UI and the API
+
+In the previous section, you made the app dynamically response to updates from other users via Spring Data REST’s built in event handlers and the Spring Framework’s WebSocket support. But no application is complete without securing the whole thing so that only proper users have access to the UI and the resources behind it.
+
+Feel free to grab the code from this repository and follow along. This section is based on the previous section’s app with extra things added.
+
+Adding Spring Security to the project
+
+Before getting underway, you need to add a couple dependencies to your project’s pom.xml file:
+
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-security</artifactId>
+</dependency>
+<dependency>
+    <groupId>org.thymeleaf.extras</groupId>
+    <artifactId>thymeleaf-extras-springsecurity4</artifactId>
+</dependency>
+This bring in Spring Boot’s Spring Security starter as well as some extra Thymeleaf tags to do security look ups in the web page.
+
+Defining the security model
+
+In the past section, you have worked with a nice payroll system. It’s handy to declare things on the backend and let Spring Data REST do the heavy lifting. The next step is to model a system where security controls need to be instituted.
+
+If this is a payroll system, then only managers would be accessing it. So kick things off by modeling a Manager object:
+
+@Data
+@ToString(exclude = "password")
+@Entity
+public class Manager {
+
+	public static final PasswordEncoder PASSWORD_ENCODER = new BCryptPasswordEncoder();
+
+	private @Id @GeneratedValue Long id;
+
+	private String name;
+
+	private @JsonIgnore String password;
+
+	private String[] roles;
+
+	public void setPassword(String password) {
+		this.password = PASSWORD_ENCODER.encode(password);
+	}
+
+	protected Manager() {}
+
+	public Manager(String name, String password, String... roles) {
+
+		this.name = name;
+		this.setPassword(password);
+		this.roles = roles;
+	}
+
+}
+PASSWORD_ENCODER is the means to encrypt new passwords or to take password inputs and encrypt them before comparison.
+id, name, password, and roles define the parameters needed to restrict access.
+The customized setPassword() ensures that passwords are never stored in the clear.
+There is a key thing to keep in mind when designing your security layer. Secure the right bits of data (like passwords) and do NOT let them get printed to console, into logs, or exported via JSON serialization.
+
+@ToString(exclude = "password") ensures that the Lombok-generated toString() method will NOT print out the password.
+@JsonIgnore applied to the password field protects from Jackson serializing this field.
+Creating a manager’s repository
+
+Spring Data is so good at managing entities. Why not create a repository to handle these managers?
+
+@RepositoryRestResource(exported = false)
+public interface ManagerRepository extends Repository<Manager, Long> {
+
+	Manager save(Manager manager);
+
+	Manager findByName(String name);
+
+}
+Instead of extending the usual CrudRepository, you don’t need so many methods. Instead, you need to save data (which is also used for updates) and you need to look up existing users. Hence, you can use Spring Data Common’s minimal Repository marker interface. It comes with no predefined operations.
+
+Spring Data REST, by default, will export any repository it finds. You do NOT want this repository exposed for REST operations! Apply the @RepositoryRestResource(exported = false) annotation to block it from export. This prevents the repository from being served up as well as any metadata.
+
+Linking employees with their managers
+
+The last bit of modeling security is to associate employees with a manager. In this domain, an employee can have one manager while a manager can have multiple employees:
+
+@Data
+@Entity
+public class Employee {
+
+	private @Id @GeneratedValue Long id;
+	private String firstName;
+	private String lastName;
+	private String description;
+
+	private @Version @JsonIgnore Long version;
+
+	private @ManyToOne Manager manager;
+
+	private Employee() {}
+
+	public Employee(String firstName, String lastName, String description, Manager manager) {
+		this.firstName = firstName;
+		this.lastName = lastName;
+		this.description = description;
+		this.manager = manager;
+	}
+}
+The manager attribute is linked via JPA’s @ManyToOne. Manager doesn’t need the @OneToMany because you haven’t defined the need to look that up.
+The utility constructor call is updated to support initialization.
+Securing employees to their managers
+
+Spring Security supports a multitude of options when it comes to defining security policies. In this section, you want to restrict things such that ONLY managers can view employee payroll data, and that saving, updating, and deleting operations are confined to the employee’s manager. In other words, any manager can log in and view the data, but only a given employee’s manager can make any changes.
+
+@PreAuthorize("hasRole('ROLE_MANAGER')")
+public interface EmployeeRepository extends PagingAndSortingRepository<Employee, Long> {
+
+	@Override
+	@PreAuthorize("#employee?.manager == null or #employee?.manager?.name == authentication?.name")
+	Employee save(@Param("employee") Employee employee);
+
+	@Override
+	@PreAuthorize("@employeeRepository.findOne(#id)?.manager?.name == authentication?.name")
+	void delete(@Param("id") Long id);
+
+	@Override
+	@PreAuthorize("#employee?.manager?.name == authentication?.name")
+	void delete(@Param("employee") Employee employee);
+
+}
+@PreAuthorize at the top of the interface restricts access to people with ROLE_MANAGER.
+
+On save(), either the employee’s manager is null (initial creation of a new employee when no manager has been assigned), or the employee’s manager’s name matches the currently authenticated user’s name. Here you are using Spring Security’s SpEL expressions to define access. It comes with a handy "?." property navigator to handle null checks. It’s also important to note using the @Param(…​) on the arguments to link HTTP operations with the methods.
+
+On delete(), the method either has access to the employee, or in the event it only has an id, then it must find the employeeRepository in the application context, perform a findOne(id), and then check the manager against the currently authenticated user.
+
+Writing a UserDetails service
+
+A common point of integration with security is to define a UserDetailsService. This is the way to connect your user’s data store into a Spring Security interface. Spring Security needs a way to look up users for security checks, and this is the bridge. Thankfully with Spring Data, the effort is quite minimal:
+
+@Component
+public class SpringDataJpaUserDetailsService implements UserDetailsService {
+
+	private final ManagerRepository repository;
+
+	@Autowired
+	public SpringDataJpaUserDetailsService(ManagerRepository repository) {
+		this.repository = repository;
+	}
+
+	@Override
+	public UserDetails loadUserByUsername(String name) throws UsernameNotFoundException {
+		Manager manager = this.repository.findByName(name);
+		return new User(manager.getName(), manager.getPassword(),
+				AuthorityUtils.createAuthorityList(manager.getRoles()));
+	}
+
+}
+SpringDataJpaUserDetailsService implements Spring Security’s UserDetailsService. The interface has one method: loadUserByUsername(). This method is meant to return a UserDetails object so Spring Security can interrogate the user’s information.
+
+Because you have a ManagerRepository, there is no need to write any SQL or JPA expressions to fetch this needed data. In this class, it is autowired by constructor injection.
+
+loadUserByUsername() taps into the custom finder you write a moment ago, findByName(). It then populates a Spring Security User instance, which implements the UserDetails interface. You are also using Spring Securiy’s AuthorityUtils to transition from an array of string-based roles into a Java List of GrantedAuthority.
+
+Wiring up your security policy
+
+The @PreAuthorize expressions applied to your repository are access rules. These rules are for nought without a security policy.
+
+@Configuration
+@EnableWebSecurity
+@EnableGlobalMethodSecurity(prePostEnabled = true)
+public class SecurityConfiguration extends WebSecurityConfigurerAdapter {
+
+	@Autowired
+	private SpringDataJpaUserDetailsService userDetailsService;
+
+	@Override
+	protected void configure(AuthenticationManagerBuilder auth) throws Exception {
+		auth
+			.userDetailsService(this.userDetailsService)
+				.passwordEncoder(Manager.PASSWORD_ENCODER);
+	}
+
+	@Override
+	protected void configure(HttpSecurity http) throws Exception {
+		http
+			.authorizeRequests()
+				.antMatchers("/built/**", "/main.css").permitAll()
+				.anyRequest().authenticated()
+				.and()
+			.formLogin()
+				.defaultSuccessUrl("/", true)
+				.permitAll()
+				.and()
+			.httpBasic()
+				.and()
+			.csrf().disable()
+			.logout()
+				.logoutSuccessUrl("/");
+	}
+
+}
+This code has a lot of complexity in it, so let’s walk through it, first talking about the annotations and APIs. Then we’ll discuss the security policy it defines.
+
+@EnableWebSecurity tells Spring Boot to drop its autoconfigured security policy and use this one instead. For quick demos, autoconfigured security is okay. But for anything real, you should write the policy yourself.
+@EnableGlobalMethodSecurity turns on method-level security with Spring Security’s sophisticated @Pre and @Post annotations.
+It extends WebSecurityConfigurerAdapter, a handy base class to write policy.
+It autowired the SpringDataJpaUserDetailsService by field inject and then plugs it in via the configure(AuthenticationManagerBuilder) method. The PASSWORD_ENCODER from Manager is also setup.
+The pivotal security policy is written in pure Java with the configure(HttpSecurity).
+The security policy says to authorize all requests using the access rules defined earlier.
+
+The paths listed in antMatchers() are granted unconditional access since there is no reason to block static web resources.
+Anything that doesn’t match that falls into anyRequest().authenticated() meaning it requires authentication.
+With those access rules setup, Spring Security is told to use form-based authentication, defaulting to "/" upon success, and to grant access to the login page.
+BASIC login is also configured with CSRF disabled. This is mostly for demonstrations and not recommended for production systems without careful analysis.
+Logout is configured to take the user to "/".
+ BASIC authentication is handy when you are experimenting with curl. Using curl to access a form-based system is daunting. It’s important to recognize that authenticting with any mechanism over HTTP (not HTTPS) puts you at risk of credentials being sniffed over the wire. CSRF is a good protocol to leave intact. It is simply disabled to make interaction with BASIC and curl easier. In production, it’s best to leave it on.
+Adding security details automatically
+
+A good user experience is when the application can automatically apply context. In this example, if a logged in manager creates a new employee record, it makes sense for that manager to own it. With Spring Data REST’s event handlers, there is no need for the user to explicitly link it. It also ensures the user doesn’t accidentally records to the wrong manager.
+
+@Component
+@RepositoryEventHandler(Employee.class)
+public class SpringDataRestEventHandler {
+
+	private final ManagerRepository managerRepository;
+
+	@Autowired
+	public SpringDataRestEventHandler(ManagerRepository managerRepository) {
+		this.managerRepository = managerRepository;
+	}
+
+	@HandleBeforeCreate
+	public void applyUserInformationUsingSecurityContext(Employee employee) {
+
+		String name = SecurityContextHolder.getContext().getAuthentication().getName();
+		Manager manager = this.managerRepository.findByName(name);
+		if (manager == null) {
+			Manager newManager = new Manager();
+			newManager.setName(name);
+			newManager.setRoles(new String[]{"ROLE_MANAGER"});
+			manager = this.managerRepository.save(newManager);
+		}
+		employee.setManager(manager);
+	}
+}
+@RepositoryEventHandler(Employee.class) flags this event handler as only applied to Employee objects. The @HandleBeforeCreate annotation gives you a chance to alter the incoming Employee record before it gets written to the database.
+
+In this sitation, you lookup the current user’s security context to get the user’s name. Then look up the associated manager using findByName() and apply it to the manager. There is a little extra glue code to create a new manager if he or she doesn’t exist in the system yet. But that is mostly to support initialization of the database. In a real production system, that code should be removed and instead depend on the DBAs or Security Ops team to properly maintain the user data store.
+
+Pre-loading manager data
+
+Loading managers and linking employees to these managers is rather straight forward:
+
+@Component
+public class DatabaseLoader implements CommandLineRunner {
+
+	private final EmployeeRepository employees;
+	private final ManagerRepository managers;
+
+	@Autowired
+	public DatabaseLoader(EmployeeRepository employeeRepository,
+						  ManagerRepository managerRepository) {
+
+		this.employees = employeeRepository;
+		this.managers = managerRepository;
+	}
+
+	@Override
+	public void run(String... strings) throws Exception {
+
+		Manager greg = this.managers.save(new Manager("greg", "turnquist",
+							"ROLE_MANAGER"));
+		Manager oliver = this.managers.save(new Manager("oliver", "gierke",
+							"ROLE_MANAGER"));
+
+		SecurityContextHolder.getContext().setAuthentication(
+			new UsernamePasswordAuthenticationToken("greg", "doesn't matter",
+				AuthorityUtils.createAuthorityList("ROLE_MANAGER")));
+
+		this.employees.save(new Employee("Frodo", "Baggins", "ring bearer", greg));
+		this.employees.save(new Employee("Bilbo", "Baggins", "burglar", greg));
+		this.employees.save(new Employee("Gandalf", "the Grey", "wizard", greg));
+
+		SecurityContextHolder.getContext().setAuthentication(
+			new UsernamePasswordAuthenticationToken("oliver", "doesn't matter",
+				AuthorityUtils.createAuthorityList("ROLE_MANAGER")));
+
+		this.employees.save(new Employee("Samwise", "Gamgee", "gardener", oliver));
+		this.employees.save(new Employee("Merry", "Brandybuck", "pony rider", oliver));
+		this.employees.save(new Employee("Peregrin", "Took", "pipe smoker", oliver));
+
+		SecurityContextHolder.clearContext();
+	}
+}
+The one wrinkle is that Spring Security is active with access rules in full force when this loader runs. Thus to save employee data, you must use Spring Security’s setAuthentication() API to authenticate this loader with the proper name and role. At the end, the security context is cleared out.
+
+Touring your secured REST service
+
+With all these mods in place, you can fire up the application (./mvnw spring-boot:run) and check out the mods using cURL.
+
+$ curl -v -u greg:turnquist localhost:8080/api/employees/1
+*   Trying ::1...
+* Connected to localhost (::1) port 8080 (#0)
+* Server auth using Basic with user 'greg'
+> GET /api/employees/1 HTTP/1.1
+> Host: localhost:8080
+> Authorization: Basic Z3JlZzp0dXJucXVpc3Q=
+> User-Agent: curl/7.43.0
+> Accept: */*
+>
+< HTTP/1.1 200 OK
+< Server: Apache-Coyote/1.1
+< X-Content-Type-Options: nosniff
+< X-XSS-Protection: 1; mode=block
+< Cache-Control: no-cache, no-store, max-age=0, must-revalidate
+< Pragma: no-cache
+< Expires: 0
+< X-Frame-Options: DENY
+< Set-Cookie: JSESSIONID=E27F929C1836CC5BABBEAB78A548DF8C; Path=/; HttpOnly
+< ETag: "0"
+< Content-Type: application/hal+json;charset=UTF-8
+< Transfer-Encoding: chunked
+< Date: Tue, 25 Aug 2015 15:57:34 GMT
+<
+{
+  "firstName" : "Frodo",
+  "lastName" : "Baggins",
+  "description" : "ring bearer",
+  "manager" : {
+    "name" : "greg",
+    "roles" : [ "ROLE_MANAGER" ]
+  },
+  "_links" : {
+    "self" : {
+      "href" : "http://localhost:8080/api/employees/1"
+    }
+  }
+}
+This shows a lot more details than during the first section. First of all, Spring Security turns on several HTTP protocols to protect against various attack vectors (Pragma, Expires, X-Frame-Options, etc.). You are also issuing BASIC credentials with -u greg:turnquist which renders the Authorization header.
+
+Amidst all the headers, you can see the ETag header from your versioned resource.
+
+Finally, inside the data itself, you can see a new attribute: manager. You can see that it includes the name and roles, but NOT the password. That is due to using @JsonIgnore on that field. Because Spring Data REST didn’t export that repository, it’s values are inlined in this resource. You’ll put that to good use as you update the UI in the next section.
+
+Displaying manager info on the UI
+
+With all these mods in the backend, you can now shift to updating things in the frontend. First of all, show an employee’s manager inside the <Employee /> React component:
+
+class Employee extends React.Component {
+
+	constructor(props) {
+		super(props);
+		this.handleDelete = this.handleDelete.bind(this);
+	}
+
+	handleDelete() {
+		this.props.onDelete(this.props.employee);
+	}
+
+	render() {
+		return (
+			<tr>
+				<td>{this.props.employee.entity.firstName}</td>
+				<td>{this.props.employee.entity.lastName}</td>
+				<td>{this.props.employee.entity.description}</td>
+				<td>{this.props.employee.entity.manager.name}</td>
+				<td>
+					<UpdateDialog employee={this.props.employee}
+								  attributes={this.props.attributes}
+								  onUpdate={this.props.onUpdate}/>
+				</td>
+				<td>
+					<button onClick={this.handleDelete}>Delete</button>
+				</td>
+			</tr>
+		)
+	}
+}
+This merely adds a column for this.props.employee.entity.manager.name.
+
+Filtering out JSON Schema metadata
+
+If a field is shown in the data output, it is safe to assume it has an entry in the JSON Schema metadata. You can see it in the following excerpt:
+
+{
+	...
+    "manager" : {
+      "readOnly" : false,
+      "$ref" : "#/descriptors/manager"
+    },
+    ...
+  },
+  ...
+  "$schema" : "http://json-schema.org/draft-04/schema#"
+}
+The manager field isn’t something you want people to edit directly. Since it’s inlined, it should be viewed as a read only attribute. To filter it out inlined entries from the CreateDialog and UpdateDialog, just delete such entries after fetching the JSON Schema metadata in loadFromServer().
+
+/**
+ * Filter unneeded JSON Schema properties, like uri references and
+ * subtypes ($ref).
+ */
+Object.keys(schema.entity.properties).forEach(function (property) {
+    if (schema.entity.properties[property].hasOwnProperty('format') &&
+        schema.entity.properties[property].format === 'uri') {
+        delete schema.entity.properties[property];
+    }
+    if (schema.entity.properties[property].hasOwnProperty('$ref')) {
+        delete schema.entity.properties[property];
+    }
+});
+
+this.schema = schema.entity;
+this.links = employeeCollection.entity._links;
+return employeeCollection;
+This code trims out both URI relations as well as $ref entries.
+
+Trapping for unauthorized access
+
+With security checks configured on the backend, add a handler in case someone tries to update a record without authorization:
+
+onUpdate(employee, updatedEmployee) {
+    client({
+        method: 'PUT',
+        path: employee.entity._links.self.href,
+        entity: updatedEmployee,
+        headers: {
+            'Content-Type': 'application/json',
+            'If-Match': employee.headers.Etag
+        }
+    }).done(response => {
+        /* Let the websocket handler update the state */
+    }, response => {
+        if (response.status.code === 403) {
+            alert('ACCESS DENIED: You are not authorized to update ' +
+                employee.entity._links.self.href);
+        }
+        if (response.status.code === 412) {
+            alert('DENIED: Unable to update ' + employee.entity._links.self.href +
+                '. Your copy is stale.');
+        }
+    });
+}
+You had code to catch an HTTP 412 error. This traps an HTTP 403 status code and provides a suitable alert.
+
+Do the same for delete operations:
+
+onDelete(employee) {
+    client({method: 'DELETE', path: employee.entity._links.self.href}
+    ).done(response => {/* let the websocket handle updating the UI */},
+    response => {
+        if (response.status.code === 403) {
+            alert('ACCESS DENIED: You are not authorized to delete ' +
+                employee.entity._links.self.href);
+        }
+    });
+}
+This is coded similarly with a tailored error messages.
+
+Add some security details to the UI
+
+The last thing to crown this version of the app is to display who is logged in as well providing a logout button by including this new <div> in the index.html file ahead of the react <div>:
+
+<div>
+    Hello, <span th:text="${#authentication.name}">user</span>.
+    <form th:action="@{/logout}" method="post">
+        <input type="submit" value="Log Out"/>
+    </form>
+</div>
+Putting it all together
+
+With these changes in the frontend, restart the application and navigate to http://localhost:8080.
+
+You are immediately redirected to a login form. This form is supplied by Spring Security, though you can create your own if you wish. Login as greg / turnquist.
+
+security 1
+You can see the newly added manager column. Go through a couple pages until you find employees owned by oliver.
+
+security 2
+Click on Update, make some changes, and then hit Update. It should fail with the following pop-up:
+
+security 3
+If you try Delete, it should fail with a similar message. Create a new employee, and it should be assigned to you.
+
+Review
+
+In this section:
+
+You defined the model of manager and linked it to an employee via a 1-to-many relationship.
+You created a repository for managers and told Spring Data REST to not export.
+You wrote a set of access rules for the empoyee repository and also write a security policy.
+You wrote another Spring Data REST event handler to trap creation events before they happen so they current user could be assigned as the employee’s manager.
+You updated the UI to show an employee’s manager and also display error pop-ups when unauthorized actions are taken.
+Issues?
+
+The webpage has become quite sophisticated. But what about managing relationships and inlined data? The create/update dialogs aren’t really suited for that. It might require some custom written forms.
+
+Managers have access to employee data. Should employees have access? If you were to add more details like phone numbers and addresses, how would you model it? How would you grant employees access to the system so they could update those specific fields? Are there more hypermedia controls that would be handy to put on the page?
+
+Want to write a new guide or contribute to an existing one? Check out our contribution guidelines.
+
+ All guides are released with an ASLv2 license for the code, and an Attribution, NoDerivatives creative commons license for the writing.
